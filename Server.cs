@@ -1,7 +1,7 @@
 ﻿using System.Net;
 using System.Net.Sockets;
 
-namespace LGSCommon
+namespace DehxServerLib
 {
 
     public delegate bool ServerMessageHandlerCallback(byte[] message, object remoteEP);
