@@ -15,6 +15,8 @@ namespace DehxServerLib
         public ServerMessageHandlerCallback serverMessageHandler;
         public bool IsRunning { get { return netThreadCancelRequest.IsCancellationRequested; } }
         private CancellationTokenSource netThreadCancelRequest;
+        private int udpPort;
+        public const int SIO_UDP_CONNRESET = -1744830452;
 
 
         public DehxServer(ServerMessageHandlerCallback smh, int tcpPort, int udpPort)
@@ -35,7 +37,7 @@ namespace DehxServerLib
 
         public void Start(int tcpPort, int udpPort, CancellationToken cancellationToken)
         {
-
+            this.udpPort = udpPort;
             // Start the TCP server
             tcpListener = new TcpListener(IPAddress.Any, tcpPort);
             tcpListener.Start();
@@ -43,6 +45,7 @@ namespace DehxServerLib
 
             // Start the UDP server
             udpServer = new UdpClient(udpPort);
+            udpServer.Client.IOControl((IOControlCode)SIO_UDP_CONNRESET, new byte[] { 0, 0, 0, 0 }, null);
             Console.WriteLine("UDP server started on port {0}", udpPort);
 
             // Start accepting TCP clients in a new thread
@@ -55,7 +58,9 @@ namespace DehxServerLib
             // Start receiving UDP packets in a new thread
             Thread udpThread = new Thread(() =>
             {
+
                 UdpThreadWorker(cancellationToken);
+
             });
             udpThread.Start();
         }
@@ -84,23 +89,18 @@ namespace DehxServerLib
         {
             while (!cancellationToken.IsCancellationRequested)
             {
-                IPEndPoint remoteEP = new IPEndPoint(IPAddress.Any, 0);
-                try
+                byte[] data = { };
+                IPEndPoint remoteEP;
+
+                remoteEP = new IPEndPoint(IPAddress.Any, 0);
+                data = udpServer.Receive(ref remoteEP);
+                if (!udpClients.Contains(remoteEP))
                 {
-                    byte[] data = udpServer.Receive(ref remoteEP);
-                    if (!udpClients.Contains(remoteEP))
-                    {
-                        udpClients.Add(remoteEP);
-                        Console.WriteLine("UDP client connected from {0}", remoteEP);
-                    }
-                    HandleUdpPacket(data, remoteEP);
-                }
-                catch (SocketException se)
-                {
-                    udpClients.Remove(remoteEP);
-                    Console.WriteLine("UDP Client Disconnected {0}", remoteEP);
+                    udpClients.Add(remoteEP);
+                    Console.WriteLine("UDP client connected from {0}", remoteEP);
                 }
 
+                HandleUdpPacket(data, remoteEP);
             }
         }
 
@@ -171,17 +171,27 @@ namespace DehxServerLib
 
         public void SendUdpBroadcast(byte[] data)
         {
-            foreach (IPEndPoint otherClient in udpClients)
+
+            Parallel.ForEach(udpClients, udpClient =>
             {
-                udpServer.Send(data, data.Length, otherClient);
-            }
+                try
+                {
+                    udpServer.Send(data, data.Length, udpClient);
+                }
+                catch (Exception)
+                {
+
+                }
+            });
+
         }
         public void SendTcpBroadcast(byte[] data)
         {
-            foreach (TcpClient otherClient in tcpClients)
+            Parallel.ForEach(tcpClients, tcpClient =>
             {
-                otherClient.GetStream().Write(data, 0, data.Length);
-            }
+                tcpClient.GetStream().Write(data, 0, data.Length);
+            });
+
         }
 
         public void SendUdp(byte[] data, IPEndPoint remoteEP)
