@@ -1,15 +1,17 @@
-﻿namespace DehxServerLib.ServerMessaging;
+﻿using System.Net.Sockets;
 
-public class MessageUpdateGame : BaseMessage
+namespace DehxServerLib.ServerMessaging;
+
+public class MessageUpdateGame<T> : BaseMessage
 {
-    public dynamic GameState { get; set; }
+    public T GameState { get; set; }
 
     public MessageUpdateGame()
     {
         messageType = MessageType.UpdateGameState;
     }
 
-    public MessageUpdateGame(dynamic newGameState)
+    public MessageUpdateGame(T newGameState)
     {
         messageType = MessageType.UpdateGameState;
         this.GameState = newGameState;

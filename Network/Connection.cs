@@ -5,34 +5,37 @@ namespace DehxServerLib.Network;
 
 public class Connection
 {
+    public object ServerRef;
     private NetworkStream _stream;
     public TcpClient tcpClient;
     public int clientId;
     private DisconnectedCallback disconnectEvent;
     public string loginName;
-    private readonly MessageHandlerCallback messageEvent;
+    private readonly ServerMessageHandlerCallback ServerMessageEvent;
+    private readonly ClientMessageHandlerCallback ClientMessageEvent;
     public Messaging messaging { get; set; }
 
     public Connection(TcpClient c, int clientid, DisconnectedCallback disconnectedCallback,
-        MessageHandlerCallback svrMsgHnd)
+        ServerMessageHandlerCallback svrMsgHnd, object Server)
     {
         // this is a connection from server to client
         disconnectEvent = disconnectedCallback;
-        messageEvent = svrMsgHnd;
+        ServerMessageEvent = svrMsgHnd;
         clientId = clientid;
         tcpClient = c;
         stream = c.GetStream();
+        ServerRef = Server;
 
         Task.Run(TCPDataHandler).GetAwaiter().OnCompleted(() => { disconnectedCallback(clientid); });
     }
 
-    public Connection(MessageHandlerCallback clientMsgHnd)
+    public Connection(ClientMessageHandlerCallback clientMsgHnd)
     {
         // this is a connection from client to server
         this.tcpClient = new TcpClient();
 
         clientId = -1;
-        messageEvent = clientMsgHnd;
+        ClientMessageEvent = clientMsgHnd;
     }
 
 
@@ -96,8 +99,14 @@ public class Connection
                     {
                         numberOfBytesRead += stream.Read(buffer, numberOfBytesRead, mLen - numberOfBytesRead);
                     }
-
-                    messageEvent(buffer, clientId);
+                    if (ClientMessageEvent != null)
+                    {
+                        ClientMessageEvent(buffer, clientId);
+                    }
+                    if (ServerMessageEvent != null)
+                    {
+                        ServerMessageEvent(buffer, clientId);
+                    }
                 }
                 catch (Exception ex)
                 {

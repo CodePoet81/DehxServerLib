@@ -6,13 +6,13 @@ using DehxServerLib.ServerMessaging;
 namespace DehxServerLib
 {
 
-    public class Server<T>
+    public class DehxServer
     {
 
         public List<TcpListener> TCPlisteners;
         public List<Connection> connections;
         public List<IPAddress> serverIPs;
-        public T RootInstance;
+        public ServerMessageHandlerCallback serverMessageHandler;
 
         public void DropConnection(int clientId)
         {
@@ -34,9 +34,10 @@ namespace DehxServerLib
             return host.AddressList;
         }
 
-        public Server()
+        public DehxServer(ServerMessageHandlerCallback smh)
         {
 
+            this.serverMessageHandler = smh;
             Int32 tcpport = 1337;
             connections = new List<Connection>();
             Console.Write("Discovering IP Addresses ... ");
@@ -67,10 +68,14 @@ namespace DehxServerLib
             }
 
             Console.WriteLine("********** SERVER READY FOR CONNECTIONS *********");
-            Parallel.ForEach(TCPlisteners, listener =>
+            Task.Run(() =>
             {
-                AcceptIncomingConnections(listener);
+                Parallel.ForEach(TCPlisteners, listener =>
+                {
+                    AcceptIncomingConnections(listener);
+                });
             });
+
         }
 
         public Task AcceptIncomingConnections(TcpListener listener)
@@ -79,44 +84,10 @@ namespace DehxServerLib
             {
                 TcpClient client = listener.AcceptTcpClient();
                 DisconnectedCallback dc = DropConnection;
-                MessageHandlerCallback smh = ServerMessageHandler;
                 int clientid = IDNumbers.NextId();
-                connections.Add(new Connection(client, clientid, dc, smh));
+                connections.Add(new Connection(client, clientid, dc, serverMessageHandler, this));
                 Console.WriteLine("Client {0} {1} Connected!", clientid.ToString(), client.Client.RemoteEndPoint?.ToString());
                 Task.Yield();
-            }
-        }
-
-        public async void BroadCastGameState(dynamic gs)
-        {
-            var bcMsg = new MessageUpdateGame(gs);
-
-            try
-            {
-                Parallel.ForEach(connections, (connection) =>
-                {
-
-                    bcMsg.Send(connection.stream);
-
-                });
-            }
-            catch (Exception)
-            {
-            }
-
-        }
-
-        public void ServerMessageHandler(byte[] msg, int clientid)
-        {
-            var m = ServerMessaging.Messaging.DeSerializeMessage(msg);
-
-            if (m.messageType == MessageType.NewGame)
-            {
-                if (this.RootInstance == null)
-                {
-                    this.RootInstance = Activator.CreateInstance<T>();
-                }
-                // Task.Run(() => { this.RootInstance.StartGame(BroadCastGameState); });
             }
         }
 

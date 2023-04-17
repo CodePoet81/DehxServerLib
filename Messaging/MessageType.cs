@@ -18,8 +18,17 @@ public static class MessageType
                 return typeof(MessageNewGame);
             case NewPlayer:
                 return typeof(MessageNewPlayer);
+            default:
+                throw new Exception($"Message Type Unkown for Message Type:{messageType}");
+        }
+    }
+    public static Type GetType<T>(byte messageType)
+    {
+
+        switch (messageType)
+        {
             case UpdateGameState:
-                return typeof(MessageUpdateGame);
+                return typeof(MessageUpdateGame<T>);
             default:
                 throw new Exception($"Message Type Unkown for Message Type:{messageType}");
         }
