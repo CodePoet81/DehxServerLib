@@ -192,7 +192,7 @@ namespace LGSCommon
 
         public void SendTcp(byte[] data, IPEndPoint remoteEP)
         {
-            udpServer.Send(data, data.Length, remoteEP);
+            tcpClients.Single(t => t.Client.RemoteEndPoint == remoteEP).GetStream().Write(data, 0, data.Length);
         }
     }
 
