@@ -45,6 +45,8 @@ namespace DehxServerLib
 
             // Start the UDP server
             udpServer = new UdpClient(udpPort);
+            udpServer.Client.SendBufferSize = 65507;
+            udpServer.Client.ReceiveBufferSize = 65507;
             udpServer.Client.IOControl((IOControlCode)SIO_UDP_CONNRESET, new byte[] { 0, 0, 0, 0 }, null);
             Console.WriteLine("UDP server started on port {0}", udpPort);
 
@@ -72,6 +74,8 @@ namespace DehxServerLib
                 try
                 {
                     TcpClient client = tcpListener.AcceptTcpClient();
+                    client.Client.SendBufferSize = 1024000;
+                    client.Client.ReceiveBufferSize = 1024000;
                     tcpClients.Add(client);
                     Console.WriteLine("TCP client connected from {0}", client.Client.RemoteEndPoint);
                     // Start a new thread to handle this client
