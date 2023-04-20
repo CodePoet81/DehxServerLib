@@ -120,20 +120,8 @@ namespace DehxServerLib
                 {
                     if (stream.DataAvailable)
                     {
-
-                        byte mType = br.ReadByte();
-                        byte[] mLenb = br.ReadBytes(4);
-                        int mLen = BitConverter.ToInt32(mLenb, 0);
-                        byte[] buffer = new byte[mLen + 5];
-
-                        buffer[0] = mType;
-                        Array.Copy(mLenb, 0, buffer, 1, 4);
-
-                        int numberOfBytesRead = 5 + stream.Read(buffer, 5, mLen);
-                        while (numberOfBytesRead < (mLen + 5))
-                        {
-                            numberOfBytesRead += stream.Read(buffer, numberOfBytesRead, mLen - numberOfBytesRead);
-                        }
+                        byte[] buffer = new byte[stream.Socket.Available];
+                        int numberOfBytesRead = stream.Read(buffer, 0, buffer.Length);
 
                         if (serverMessageHandler != null)
                         {
