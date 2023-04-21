@@ -135,6 +135,8 @@ namespace DehxServerLib
                         }
                     }
                 }
+
+                Console.WriteLine("TCP client disconnected from {0}", tcpClient.Client.RemoteEndPoint);
             }
             catch (SocketException ex)
             {
