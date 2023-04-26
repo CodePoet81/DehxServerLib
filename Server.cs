@@ -74,8 +74,8 @@ namespace DehxServerLib
                 try
                 {
                     TcpClient client = tcpListener.AcceptTcpClient();
-                    client.Client.SendBufferSize = 1024000;
-                    client.Client.ReceiveBufferSize = 1024000;
+                    client.Client.SendBufferSize = int.MaxValue;
+                    client.Client.ReceiveBufferSize = int.MaxValue;
                     tcpClients.Add(client);
                     Console.WriteLine("TCP client connected from {0}", client.Client.RemoteEndPoint);
                     // Start a new thread to handle this client
@@ -172,9 +172,10 @@ namespace DehxServerLib
                 {
                     udpServer.Send(data, data.Length, udpClient);
                 }
-                catch (Exception)
-                {
 
+                catch (Exception e)
+                {
+                    Console.WriteLine(e);
                 }
             });
 
