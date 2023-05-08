@@ -35,7 +35,7 @@ namespace DehxServerLib
             netThreadCancelRequest.Cancel();
         }
 
-        public void Start(int tcpPort, int udpPort, CancellationToken cancellationToken)
+        public async void Start(int tcpPort, int udpPort, CancellationToken cancellationToken)
         {
             this.udpPort = udpPort;
             // Start the TCP server
@@ -50,30 +50,49 @@ namespace DehxServerLib
             udpServer.Client.IOControl((IOControlCode)SIO_UDP_CONNRESET, new byte[] { 0, 0, 0, 0 }, null);
             Console.WriteLine("UDP server started on port {0}", udpPort);
 
-            // Start accepting TCP clients in a new thread
-            Thread tcpThread = new Thread(() =>
-            {
-                TcpThreadWorker(cancellationToken);
-            });
-            tcpThread.Start();
 
-            // Start receiving UDP packets in a new thread
-            Thread udpThread = new Thread(() =>
-            {
+            Task receiveMessagesTask = Task.Run(async () => await ReceiveMessagesAsync(udpServer, cancellationToken), cancellationToken);
+            Task acceptClientsTask = Task.Run(async () => await AcceptClientsAsync(tcpListener, cancellationToken), cancellationToken);
 
-                UdpThreadWorker(cancellationToken);
-
-            });
-            udpThread.Start();
+            await acceptClientsTask;
+            await receiveMessagesTask;
         }
 
-        private void TcpThreadWorker(CancellationToken cancellationToken)
+        async Task ReceiveMessagesAsync(UdpClient udpServer, CancellationToken cancellationToken)
         {
-            while (!cancellationToken.IsCancellationRequested)
+            try
             {
-                try
+                while (!cancellationToken.IsCancellationRequested)
                 {
-                    TcpClient client = tcpListener.AcceptTcpClient();
+                    UdpReceiveResult result = await udpServer.ReceiveAsync().WithCancellation(cancellationToken);
+                    byte[] data = result.Buffer;
+                    IPEndPoint remoteEP;
+
+                    remoteEP = new IPEndPoint(IPAddress.Any, 0);
+                    data = udpServer.Receive(ref remoteEP);
+                    if (!udpClients.Contains(remoteEP))
+                    {
+                        udpClients.Add(remoteEP);
+                        Console.WriteLine("UDP client connected from {0}", remoteEP);
+                    }
+
+                    HandleUdpPacket(data, remoteEP);
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                Console.WriteLine("Receiving messages cancelled.");
+            }
+        }
+
+        async Task AcceptClientsAsync(TcpListener listener, CancellationToken cancellationToken)
+        {
+            try
+            {
+                while (!cancellationToken.IsCancellationRequested)
+                {
+                    TcpClient client = await listener.AcceptTcpClientAsync().WithCancellation(cancellationToken);
+
                     client.Client.SendBufferSize = int.MaxValue;
                     client.Client.ReceiveBufferSize = int.MaxValue;
                     tcpClients.Add(client);
@@ -82,32 +101,12 @@ namespace DehxServerLib
                     Thread clientThread = new Thread(() => HandleTcpClient(client));
                     clientThread.Start();
                 }
-                catch (Exception e)
-                {
-                    Console.WriteLine(e);
-                }
             }
-        }
-
-        private void UdpThreadWorker(CancellationToken cancellationToken)
-        {
-            while (!cancellationToken.IsCancellationRequested)
+            catch (OperationCanceledException)
             {
-                byte[] data = { };
-                IPEndPoint remoteEP;
-
-                remoteEP = new IPEndPoint(IPAddress.Any, 0);
-                data = udpServer.Receive(ref remoteEP);
-                if (!udpClients.Contains(remoteEP))
-                {
-                    udpClients.Add(remoteEP);
-                    Console.WriteLine("UDP client connected from {0}", remoteEP);
-                }
-
-                HandleUdpPacket(data, remoteEP);
+                Console.WriteLine("Accepting clients cancelled.");
             }
         }
-
 
         private void HandleTcpClient(TcpClient tcpClient)
         {
@@ -201,5 +200,21 @@ namespace DehxServerLib
         }
     }
 
+    public static class TaskExtensions
+    {
+        public static async Task<TResult> WithCancellation<TResult>(this Task<TResult> task, CancellationToken cancellationToken)
+        {
+            TaskCompletionSource<bool> cancellationTaskSource = new TaskCompletionSource<bool>();
+            using (cancellationToken.Register(() => cancellationTaskSource.TrySetResult(true)))
+            {
+                if (task != await Task.WhenAny(task, cancellationTaskSource.Task))
+                {
+                    throw new OperationCanceledException(cancellationToken);
+                }
+            }
+
+            return await task;
+        }
+    }
 }
 
