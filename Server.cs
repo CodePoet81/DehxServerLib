@@ -1,5 +1,6 @@
 ﻿using System.Net;
 using System.Net.Sockets;
+using System.Text;
 
 namespace DehxServerLib
 {
@@ -112,15 +113,30 @@ namespace DehxServerLib
         {
             try
             {
-
                 NetworkStream stream = tcpClient.GetStream();
                 BinaryReader br = new BinaryReader(tcpClient.GetStream());
                 while (tcpClient.Connected)
                 {
                     if (stream.DataAvailable)
                     {
-                        byte[] buffer = new byte[stream.Socket.Available];
-                        int numberOfBytesRead = stream.Read(buffer, 0, buffer.Length);
+                        // Read the length of the message
+                        byte[] lengthBytes = new byte[sizeof(int)];
+                        int bytesRead = stream.Read(lengthBytes, 0, sizeof(int));
+                        if (bytesRead != sizeof(int)) continue;
+
+                        int messageLength = BitConverter.ToInt32(lengthBytes, 0);
+
+                        // Read the actual message data
+                        byte[] buffer = new byte[messageLength];
+                        bytesRead = 0;
+                        while (bytesRead < messageLength)
+                        {
+                            int read = stream.Read(buffer, bytesRead, messageLength - bytesRead);
+                            if (read == 0) break;
+                            bytesRead += read;
+                        }
+
+                        if (bytesRead != messageLength) continue;
 
                         if (serverMessageHandler != null)
                         {
@@ -143,6 +159,43 @@ namespace DehxServerLib
                 return;
             }
         }
+
+
+        //private void HandleTcpClient(TcpClient tcpClient)
+        //{
+        //    try
+        //    {
+
+        //        NetworkStream stream = tcpClient.GetStream();
+        //        BinaryReader br = new BinaryReader(tcpClient.GetStream());
+        //        while (tcpClient.Connected)
+        //        {
+        //            if (stream.DataAvailable)
+        //            {
+        //                byte[] buffer = new byte[stream.Socket.Available];
+        //                int numberOfBytesRead = stream.Read(buffer, 0, buffer.Length);
+
+        //                if (serverMessageHandler != null)
+        //                {
+        //                    if (serverMessageHandler(buffer, tcpClient.Client.RemoteEndPoint))
+        //                    {
+        //                        foreach (IPEndPoint otherClient in udpClients)
+        //                        {
+        //                            udpServer.Send(buffer, buffer.Length, otherClient);
+        //                        }
+        //                    }
+        //                }
+        //            }
+        //        }
+
+        //        Console.WriteLine("TCP client disconnected from {0}", tcpClient.Client.RemoteEndPoint);
+        //    }
+        //    catch (SocketException ex)
+        //    {
+        //        Console.WriteLine(ex);
+        //        return;
+        //    }
+        //}
 
         private void HandleUdpPacket(byte[] data, IPEndPoint remoteEP)
         {
@@ -179,6 +232,7 @@ namespace DehxServerLib
             });
 
         }
+
         public void SendTcpBroadcast(byte[] data)
         {
             Parallel.ForEach(tcpClients, tcpClient =>
@@ -188,16 +242,43 @@ namespace DehxServerLib
 
         }
 
+        //public void SendUdp(byte[] data, IPEndPoint remoteEP)
+        //{
+        //    udpServer.Send(data, data.Length, remoteEP);
+        //}
         public void SendUdp(byte[] data, IPEndPoint remoteEP)
         {
-            udpServer.Send(data, data.Length, remoteEP);
-        }
+            // Allocate a new byte array for the length and the data
+            byte[] dataWithLength = new byte[sizeof(int) + data.Length];
 
+            // Convert the length to a byte array
+            byte[] lengthBytes = BitConverter.GetBytes(data.Length);
+
+            // Copy the length bytes and the data bytes into the new array
+            Buffer.BlockCopy(lengthBytes, 0, dataWithLength, 0, sizeof(int));
+            Buffer.BlockCopy(data, 0, dataWithLength, sizeof(int), data.Length);
+
+            // Send the new array containing the length and the data
+            udpServer.Send(dataWithLength, dataWithLength.Length, remoteEP);
+        }
 
         public void SendTcp(byte[] data, IPEndPoint remoteEP)
         {
-            tcpClients.Single(t => t.Client.RemoteEndPoint == remoteEP).GetStream().Write(data, 0, data.Length);
+            NetworkStream stream = tcpClients.Single(t => t.Client.RemoteEndPoint == remoteEP).GetStream();
+            using (BinaryWriter bw = new BinaryWriter(stream, Encoding.UTF8, leaveOpen: true))
+            {
+                // Write the length of the data
+                bw.Write(data.Length);
+
+                // Write the actual data
+                bw.Write(data, 0, data.Length);
+            }
         }
+
+        //public void SendTcp(byte[] data, IPEndPoint remoteEP)
+        //{
+        //    tcpClients.Single(t => t.Client.RemoteEndPoint == remoteEP).GetStream().Write(data, 0, data.Length);
+        //}
     }
 
     public static class TaskExtensions
